@@ -1,6 +1,6 @@
 package com.anuchan.messaging.scenarios;
 
-import com.anuchan.messaging.util.Constants;
+import com.anuchan.messaging.util.TopicSubscription;
 import com.azure.core.util.logging.ClientLogger;
 import com.azure.messaging.servicebus.ServiceBusClientBuilder;
 import com.azure.messaging.servicebus.ServiceBusErrorContext;
@@ -9,7 +9,8 @@ import com.azure.messaging.servicebus.ServiceBusReceivedMessageContext;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
+import java.util.List;
 
 import static com.anuchan.messaging.util.Constants.TEST_DURATION;
 
@@ -17,31 +18,38 @@ import static com.anuchan.messaging.util.Constants.TEST_DURATION;
 public class ServiceBusProcessorScenario extends RunScenario {
     private final ClientLogger clientLogger = new ClientLogger(ServiceBusProcessorScenario.class);
 
-    private final String connectionString = System.getenv(Constants.AZURE_SERVICEBUS_CONNECTION_STRING);
-    private final String queueName = System.getenv(Constants.AZURE_SERVICEBUS_QUEUE_NAME);
-
-    private ServiceBusProcessorClient client;
-
     @Override
     public void run() {
-        try {
-            client = new ServiceBusClientBuilder()
-                    .connectionString(connectionString)
-                    .processor()
-                    .queueName(queueName)
-                    .disableAutoComplete()
-                    .maxAutoLockRenewDuration(Duration.ofMinutes(5))
-                    .maxConcurrentCalls(45)
-                    .prefetchCount(0)
-                    .processMessage(this::process)
-                    .processError(this::processError)
-                    .buildProcessorClient();
+        final String connectionString = super.getConnectionStringFromEnvironment();
+        final List<TopicSubscription> topicSubscriptionEntries = super.getTopicSubscriptionsFromEnvironment();
+        final List<ServiceBusProcessorClient> clients = new ArrayList<>(topicSubscriptionEntries.size());
 
-            client.start();
+        try {
+            for (TopicSubscription topicSubscription : topicSubscriptionEntries) {
+                final ServiceBusProcessorClient client = new ServiceBusClientBuilder()
+                        .connectionString(connectionString)
+                        .processor()
+                        .topicName(topicSubscription.getTopicName())
+                        .subscriptionName(topicSubscription.getSubscriptionName())
+                        .disableAutoComplete()
+                        .maxAutoLockRenewDuration(Duration.ofMinutes(5))
+                        .maxConcurrentCalls(45)
+                        .prefetchCount(0)
+                        .processMessage(this::process)
+                        .processError(this::processError)
+                        .buildProcessorClient();
+                clients.add(client);
+            }
+
+            for (ServiceBusProcessorClient client : clients) {
+                client.start();
+            }
             blockingWait(clientLogger, TEST_DURATION.plusSeconds(5));
-            client.stop();
+            for (ServiceBusProcessorClient client : clients) {
+                client.close();
+            }
         } finally {
-            close(client);
+            close(clients);
         }
     }
 
@@ -59,13 +67,5 @@ public class ServiceBusProcessorScenario extends RunScenario {
 
     private void processError(ServiceBusErrorContext errorContext) {
         clientLogger.atError().log("processError", errorContext.getException());
-    }
-
-    private void sleep(int seconds) {
-        try {
-            TimeUnit.SECONDS.sleep(seconds);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
     }
 }

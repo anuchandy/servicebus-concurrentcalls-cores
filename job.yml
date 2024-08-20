@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: java-sb-app
+  namespace: contoso-sb-app-ns
+spec:
+  backoffLimit: 4
+  completions: 1
+  parallelism: 1
+  template:
+    spec:
+      nodeSelector:
+        agentpool: nodepool1
+      containers:
+        - env:
+            - name: AZURE_SERVICEBUS_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  key: AZURE_SERVICEBUS_CONNECTION_STRING
+                  name: java-sb-app-secret
+            - name: AZURE_SERVICEBUS_TOPIC_SUBSCRIPTION_ENTRIES
+              valueFrom:
+                secretKeyRef:
+                  key: AZURE_SERVICEBUS_TOPIC_SUBSCRIPTION_ENTRIES
+                  name: java-sb-app-secret
+          image: contosoacr.azurecr.io/messaging-client-scenarios:latest
+          command: ["java"]
+          args: ["org.springframework.boot.loader.JarLauncher", "--scenario=ServiceBusProcessorScenario"]
+          imagePullPolicy: Always
+          name: processors
+      restartPolicy: Never

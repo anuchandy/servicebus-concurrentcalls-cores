@@ -4,12 +4,12 @@ services:
     image: messaging-client-scenarios:latest
     env_file: "settings.env"
     build:
-      context: messaging-client-scenarios               # the Java app source directory to build the image from.
+      context: messaging-client-scenarios       # the Java app source directory to build the image from.
     container_name: messaging-client-scenarios
     networks:
       - shared-network
     ports:
-      - "7777:7777"                           # expose the port outside for remote debugging the Java app.
+      - "7777:7777"                             # expose the port outside for remote debugging the Java app.
     deploy:
       resources:
         limits:
