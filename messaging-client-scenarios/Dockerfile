@@ -7,6 +7,7 @@ COPY ${JAR_FILE} application.jar
 RUN java -Djarmode=layertools -jar application.jar extract
 
 FROM mcr.microsoft.com/openjdk/jdk:11-mariner
+## install 'tar' tool so that 'kubectl cp' can be used to copy files from the container.
 RUN yum -y update && \
     yum -y install wget && \
     yum install -y tar.x86_64 && \

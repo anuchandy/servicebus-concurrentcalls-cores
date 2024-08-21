@@ -5,7 +5,7 @@
 3. [IntelliJ]( https://www.jetbrains.com/idea/download/?section=windows) with [Docker plugin]( https://www.jetbrains.com/help/idea/docker.html#install_docker) (the plugin is available by default in IntelliJ IDEA Ultimate).
 4. Java 11+
 
-# Running locally in docker
+# Running locally in Docker
 
 1. Clone the repo.
 2. Create the file `settings.env` in the root directory (i.e. `./servicebus-concurrentcalls-cores` ) with the following content:
@@ -14,27 +14,31 @@ AZURE_SERVICEBUS_CONNECTION_STRING=<connection-string>
 AZURE_SERVICEBUS_TOPIC_SUBSCRIPTION_ENTRIES=<topic>:<subscription>;<topic>:<subscription>;<topic>:<subscription>
 ```
 
-*  Replace `<connection-string>` with the connection string of your Azure Service Bus namespace.
-*  Replace `<topic>:<subscription>` with the topic and subscription names for the test. You can specify multiple topic-subscription pairs separated by a ";".
-3. Open the folder `servicebus-concurrentcalls-cores` in IntelliJ.
+*  Update `<connection-string>` with Azure Service Bus connection string.
+*  Update `<topic>:<subscription>` pair with existing topic and subscription names. You can specify multiple topic-subscription pairs separated by a ";".
+3. Open the directory `servicebus-concurrentcalls-cores` in IntelliJ.
 4. From the IntelliJ terminal switch to `messaging-client-scenarios` and package the Java App
       > C:\code\servicebus-concurrentcalls-cores> cd messaging-client-scenarios
 
       > C:\code\servicebus-concurrentcalls-cores\messaging-client-scenarios> mvn clean package spring-boot:repackage
-5. Right-click on the `docker-compose.yml` and select `Run 'docker-compose.yml: …'`
-
+5. Right-click on the `docker-compose.yml` in IntelliJ Project View and select `Run 'docker-compose.yml: …'`
 
 # Running in AKS
 
-> This section presumes that you have an AKS cluster with a Azure container registry (ACR) linked to it. Additionally, it assumes that the developer machine has the `kubectl` tool installed and configured to connect to the AKS cluster. If any of these prerequisites are not met, please refer to [SETUP-AKS-README.md](./SETUP-AKS-README.md).
+## Prerequisite
 
-Define an env variable `container_registry` (scoped to the current Windows command Prompt) with the name of the existing ACR associated with the AKS cluster.
+1. AKS cluster with Azure container registry (ACR) linked.
+2. The developer machine has the `kubectl` tool installed and configured to connect to the AKS cluster. 
+
+If the prerequisites are not met, refer to [Setup AKS](./SETUP-AKS-README.md).
+
+3. Define an env variable `container_registry` (scoped to the current Windows command Prompt) with the name of the existing ACR associated with the AKS cluster.
 
 ```
 set container_registry=contosoacr
 ```
 
-## Create AKS namespace and assign secrets
+## Create a namespace in AKS cluster
 
 ```
 set aks_namespace=contoso-sb-app-ns
@@ -44,13 +48,15 @@ set aks_namespace=contoso-sb-app-ns
 kubectl create namespace %aks_namespace%
 ```
 
-### Create secrets.yml file locally
+## Assign secrets to the AKS namespace
+
+### Create secrets.yml
 
 ```yaml
 apiVersion: v1
 data:
-   AZURE_SERVICEBUS_CONNECTION_STRING: <base65-encoded(servicebus-connection-string)>
-   AZURE_SERVICEBUS_TOPIC_SUBSCRIPTION_ENTRIES: <base65-encoded(<topic>:<subscription>;<topic>:<subscription>)>
+   AZURE_SERVICEBUS_CONNECTION_STRING: <base65-encode(servicebus-connection-string)>
+   AZURE_SERVICEBUS_TOPIC_SUBSCRIPTION_ENTRIES: <base65-encode(<topic>:<subscription>;<topic>:<subscription>)>
 kind: Secret
 metadata:
    name: java-sb-app-secret
@@ -58,15 +64,12 @@ metadata:
 type: Opaque
 ```
 
-Update `<aks-namespace>` to use the aks namespace we created above (e.g., `contoso-sb-app-ns`)
+* Update `<aks-namespace>` to use the aks namespace we created above (e.g., `contoso-sb-app-ns`).
+* Update with the base64 encoded Service Bus connection string and the topic-subscription pairs.
 
-The metatdata.name value i.e. 'java-sb-app-secret' is an identifier for the secrets; this identifier will be referenced from aks `job.yml` definition (more on that later).
+#### Base64 encoding Service Bus connection string and the topic-subscription pairs
 
-### Base64 encode the secrets
-
-Base 64 encode the secrets i.e. Service Bus connection string and the topic-subscription pairs.
-
-> Below we used WSL shell in Windows but any linux (E.g. Git Bash) shell will do
+> Below we used WSL shell in Windows but any Linux (E.g. Git Bash) shell will do
 
 Input to echo should be in single quotes
 
@@ -74,36 +77,36 @@ Input to echo should be in single quotes
 echo '<servicebus-connection-string>' | base64
 ```
 
-Use the output to replace `<base65-encoded(servicebus-connection-string)>` in secrets.yml
+Use the output to replace `<base65-encode(servicebus-connection-string)>`.
 
 ```
 echo '<topic>:<subscription>;<topic>:<subscription>' | base64
 ```
 
-Replace `<topic>:<subscription>` pair with the topic and subscription names for the test. You can specify multiple topic-subscription pairs separated by a ";".
+Replace `<topic>:<subscription>` pair with existing topic and subscription names. You can specify multiple topic-subscription pairs separated by a ";".
 
-Use the output to replace `<base65-encoded(<topic>:<subscription>;<topic>:<subscription>)>` in secrets.yml
+Use the output to replace `<base65-encode(<topic>:<subscription>;<topic>:<subscription>)>`.
 
-### Assign the secrets to the aks namespace
+### Apply the secrets to the aks namespace
 
 ```
 kubectl apply -f <absolute-path-to>/secrets.yml
 ```
 
-## Create the docker image with messaging Spring boot App
+## Create the Docker image with the Java App
 
-Clone the repo, switch to `messaging-client-scenarios` directory and package the Java App
+Clone the repo, switch to `messaging-client-scenarios` directory and package the Spring Boot Java App,
 
 > C:\code\servicebus-concurrentcalls-cores> cd messaging-client-scenarios
 
 > C:\code\servicebus-concurrentcalls-cores\messaging-client-scenarios> mvn clean package spring-boot:repackage
 
-and build the docker image
+and build the Docker image
 ```
 docker build -t %container_registry%.azurecr.io/messaging-client-scenarios:latest .
 ```
 
-## Push the docker image to ACR linked to the AKS
+## Push the Docker image to ACR
 
 ```
 az acr login -n %container_registry%.azurecr.io
@@ -111,29 +114,25 @@ az acr login -n %container_registry%.azurecr.io
 docker push %container_registry%.azurecr.io/messaging-client-scenarios:latest
 ```
 
-## Deploy to AKS cluster
+## Deploy container based on the Docker image to AKS cluster
 
 ### Make necessary update to job.yml
 
-The `job.yml` contains the definition for the containers we want to deploy in the aks namespace using the docker image (with the java spring app) we pushed to acr.
+The `job.yml` contains the definition for the container we want to deploy in the AKS namespace using the docker image (with messaging Spring boot App) in ACR.
 
 Open the `job.yml` file
 
-1. The value of `metadata.namespace` is 'contoso-sb-app-ns'; replace it with the aks namespace created above.
-2. The value of `spec.template.spec.nodeSelector.agentpool` is 'nodepool1'; replace it with the aks pool name appear in the portal.
-3. Search for `image:`, its value is 'contosoacr.azurecr.io/messaging-client-scenarios:latest', replace it with the name of the docker image we pushed to ACR earlier.
+1. Search for 'contosoacr' and replace it with the name of the ACR to which the Docker image was pushed.
+2. The value of `metadata.namespace` is 'contoso-sb-app-ns' (the AKS namespace created above).
+3. The value of `spec.template.spec.nodeSelector.agentpool` is 'nodepool1' ('nodepool1' is the default AKS pool name, verify this in the portal).
 
-> You can also see how the secrets AZURE_SERVICEBUS_CONNECTION_STRING and AZURE_SERVICEBUS_TOPIC_SUBSCRIPTION_ENTRIES those created earlier (via secrets.yml) is referenced in this job.yml.
-
-### Apply job.yml to deploy containers.
-
-One container will be deployed as described in the `job.yml`, which runs an instance of "Java Messaging Spring App" included in the docker image.
-
-The name of the container is `processors` (as named in the job.yml).
+### Apply job.yml to deploy container in AKS.
 
 ```
 kubectl create -f <absolute-path-to>\job.yml
 ```
+
+One container will be deployed as described in the `job.yml`, which runs an instance of "Java Messaging Spring Boot App" included in the Docker image. The name of the container is `processors` (as named in the job.yml).
 
 #### Checking container deployment status
 
@@ -141,7 +140,6 @@ kubectl create -f <absolute-path-to>\job.yml
 kubectl get pods -n %aks_namespace%
 ```
 
-* output:
 ```
 NAME                      READY   STATUS    RESTARTS   AGE
 java-sb-app-h8qlp         1/1     Running   0          9s
@@ -152,13 +150,13 @@ It shows the container (1/1) are ready and running.
 
 #### Redirecting the stdout of container in the pod
 
-If the Java program is writing to stdout (system.out.println), that can be redirected to your terminal using the below command.
-
-The value of -c option is the name for the container (defined in job.yml).
+If the Java program write logs to stdout (system.out.println), that can be redirected to your terminal,
 
 ```
 kubectl logs -n %aks_namespace% java-sb-app-h8qlp -c processors -f
 ```
+
+The value of -c option is the name for the container as defined in job.yml.
 
 #### Accessing the container shell
 
@@ -181,7 +179,7 @@ $1 ==> 2
 
 #### Copying slf4j log files
 
-The Java Spring App has log4j logging enabled; the following command shows how to copy log files to your machine from the pod container `processors`.
+The Java Spring App has log4j logging enabled; the following command copies the log files to your machine from the pod container `processors`
 
 ```
 kubectl cp  -n %aks_namespace% -c processors java-sb-app-h8qlp:/application/logs/app.log app.log

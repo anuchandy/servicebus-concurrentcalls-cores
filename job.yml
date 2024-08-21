@@ -28,4 +28,9 @@ spec:
           args: ["org.springframework.boot.loader.JarLauncher", "--scenario=ServiceBusProcessorScenario"]
           imagePullPolicy: Always
           name: processors
+          resources:
+            limits:
+              cpu: "2"
+            requests:
+              cpu: "2"
       restartPolicy: Never
